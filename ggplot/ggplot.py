@@ -12,8 +12,8 @@ from .components.legend import draw_legend
 from .geoms import *
 from .scales import *
 from .scales.utils import calc_axis_breaks_and_limits
-from .themes.theme_gray import _set_default_theme_rcparams
-from .themes.theme_gray import _theme_grey_post_plot_callback
+from .themes.theme_gray import theme_gray
+
 import six
 
 __all__ = ["ggplot"]
@@ -97,12 +97,9 @@ class ggplot(object):
         # visual_value is color value, line style, marker character, or size
         # value; and legend_key is a quantile.
         self.legend = {}
-        # Theme releated options
-        # this must be set by any theme to prevent addig the default theme
-        self.theme_applied = False
-        self.rcParams = {}
-        # Callbacks to change aspects of each axis
-        self.post_plot_callbacks = []
+
+        # default theme is theme_gray
+        self.theme = theme_gray()
 
         # continuous color configs
         self.color_scale = None
@@ -139,11 +136,14 @@ class ggplot(object):
         # Adding rc=self.rcParams does not validate/parses the params which then
         # throws an error during plotting!
         with mpl.rc_context():
-            if not self.theme_applied:
-                _set_default_theme_rcparams(mpl)
-                # will be empty if no theme was applied
-            for key in six.iterkeys(self.rcParams):
-                val = self.rcParams[key]
+            # Use a throw away rcParams, so subsequent plots will not have any
+            # residual from this plot
+            # @todo: change it to something more like
+            # rcParams = theme.get_rcParams()
+            rcParams = {}
+            self.theme.apply_rcparams(rcParams)
+            for key in six.iterkeys(rcParams):
+                val = rcParams[key]
                 # there is a bug in matplotlib which does not allow None directly
                 # https://github.com/matplotlib/matplotlib/issues/2543
                 try:
@@ -400,12 +400,8 @@ class ggplot(object):
                     cntr += 1
 
             # Finaly apply any post plot callbacks (theming, etc)
-            if self.theme_applied:
-                for ax in plt.gcf().axes:
-                    self._apply_post_plot_callbacks(ax)
-            else:
-                for ax in plt.gcf().axes:
-                    _theme_grey_post_plot_callback(ax)
+            for ax in plt.gcf().axes:
+                self.theme.post_plot_callback(ax)
 
         return plt.gcf()
 
@@ -502,10 +498,6 @@ class ggplot(object):
             #msg = "Adding a secondary mapping of {0} is unsupported and no legend for this mapping is added.\n"
             #sys.stderr.write(msg.format(str(legend_type)))
         self.legend[legend_type] = legend_dict
-
-    def _apply_post_plot_callbacks(self, axis):
-        for cb in self.post_plot_callbacks:
-            cb(axis)
 
 
 def _is_identity(x):
